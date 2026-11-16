@@ -68,7 +68,7 @@ int keys[256] = {0};
 
 // Track data
 Track* tracks = NULL;
-int numTracks = 0;
+unsigned int numTracks = 0;
 float min_z, max_z;
 
 Config config = {0};
@@ -148,6 +148,14 @@ void* pipe_reader_thread(void* arg) {
 
     // This blocks safely in the background until Python sends 4 bytes
     while (fread(&received_value, sizeof(uint32_t), 1, stdin) == 1) {
+        if (received_value < numTracks) {
+            current_TID = received_value;
+        } else {
+            // Clamp to max valid track ID if out of bounds
+            current_TID = numTracks-1;
+            fprintf(stderr, "[3D_Vis] Warning: Received out of bounds T_ID: %u, clamped to %u!\n",
+              received_value, current_TID.load());
+        }
         // Atomically update, since: _Atomic unsigned int current_TID = 0;
         current_TID = received_value;
         printf("[3D_Vis] Background thread received T_ID: %u\n", current_TID.load());
@@ -262,21 +270,6 @@ void read_track_list(const char* filename) {
     if (colorf) fclose(colorf);
 }
 
-/*uint32_t read_from_pipe() {
-  //TODO Add in plot.cconf: current_TID from pipe (live vis) and Arrow Key Control Mode (manual)
-  uint32_t received_value;
-  // Read 4 raw bytes directly from stdin into memory
-  size_t bytes_read = fread(&received_value, sizeof(uint32_t), 1, stdin);
-
-  if (bytes_read == 1) {
-      printf("Successfully received unsigned integer: %u!\n",received_value);
-      return received_value;
-  }
-  //TODO debug mode
-  fprintf(stderr,"Failed to read unsigned integer from stdin pipe!\n");
-  return 0;
-}*/
-
 /****************************************************************/
 
 void initInstancedBuffers() {
@@ -370,7 +363,8 @@ void initInstancedBuffers() {
 
 void cameraText(void)
 {
-    int idx = current_TID.load();
+    unsigned int idx = current_TID.load();
+    if (idx >= numTracks) {idx = numTracks-1;}
 
     // Vector from camera position to track 0's start point.
     float dx = tracks[idx].start_x - camX;
@@ -573,7 +567,7 @@ void display() {
 
     // Draw all instances up to current_TID in a single call!
     unsigned int tid = current_TID.load();
-    unsigned int drawCount = (tid < numTracks) ? tid : numTracks;
+    unsigned int drawCount = (tid < numTracks) ? tid : numTracks - 1;
     if (drawCount > 0) {
         glDrawArraysInstanced(GL_TRIANGLES, 0, cylinderVertexCount, drawCount);
     }
@@ -700,13 +694,6 @@ void handle_movement(int garbage) {
     glutPostRedisplay();
     glutTimerFunc(16, handle_movement, 0);
 }
-
-/*void update_current_TID(int garbage) {
-  uint32_t val = read_from_pipe();
-  if(val) {
-    current_TID = val;}
-  glutTimerFunc(16, update_current_TID, 0);
-}*/
 
 int main(int argc, char** argv) {
     read_config("plot.cconf", &config);
