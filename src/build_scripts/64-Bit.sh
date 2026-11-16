@@ -1,0 +1,9 @@
+make -C ./src/interpreter clean
+
+DIR=./src/build_scripts
+$DIR/rm_binaries.sh
+
+#Build all binaries
+$DIR/linux64.sh
+$DIR/win64.sh
+#$DIR/ARM64.sh
