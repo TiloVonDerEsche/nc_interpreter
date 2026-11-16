@@ -12,10 +12,24 @@
 // parse_line and trim
 #include "helper_funcs.h"
 #include "shaders_embedded.h"
+
+
+
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <pthread.h>
+#endif
+
+/*#include <stdatomic.h>
+// Atomic variable shared between background pipe_reader thread and OpenGL main thread
+_Atomic unsigned int current_TID = 0;*/
+
+// Atomic variable shared between background pipe_reader thread and OpenGL main thread
+#include <atomic>
+std::atomic<unsigned int> current_TID(0);
+
 #include "cm/cm.h" //color_mapper
-
-//void apply_color_config(FILE* fp, Track* t_ptr);
-
 int compile_color_config(FILE* fp);
 void map_color(Track* t);
 
@@ -26,7 +40,19 @@ float camX = 0.0f, camY = 0.0f, camZ = 50.0f;
 float camRoll = 0.0f, camPitch = 15.0f, camYaw = 0.0f;
 int lastX = 0, lastY = 0;
 
+int frameCount = 0;
+float fps = 0.0f;
+int previousTime = 0;
+char fpsString[16] = "FPS: 0";
 
+unsigned int rate_of_change = 1;
+char rocString[32] = "Rate of Change: 1";
+
+// Ambient Light Control Variable
+float ambientIntensity = 0.2f;
+char ambientString[32] = "Ambient Light Intensity: 0.2";
+
+char TID_String[16] = "T_ID: 0";
 char camStrPos[32] =     "Pos: (0.0, 0.0, 0.0)";
 char camStrTarget[32] =  "Target: (0.0, 0.0, 0.0)";
 char camStrYaw[32] =     "Yaw: 0.0°";
@@ -38,8 +64,6 @@ char camStrDis[32] =     "Distance: 0.0";
 char camStrForward[32] = "Forward: (0.0, 0.0, 0.0)";
 
 int buttonDown = 0;
-unsigned int rate_of_change = 1;
-char rocString[32] = "Rate of Change: 1";
 int keys[256] = {0};
 
 // Track data
@@ -48,18 +72,6 @@ int numTracks = 0;
 float min_z, max_z;
 
 Config config = {0};
-
-// Ambient Light Control Variable
-float ambientIntensity = 0.2f;
-char ambientString[32] = "Ambient Light Intensity: 0.2";
-
-int frameCount = 0;
-float fps = 0.0f;
-int previousTime = 0;
-char fpsString[16] = "FPS: 0";
-
-unsigned int current_TID = 0; // Starts at 0 as requested
-char TID_String[16] = "T_ID: 0";
 
 // OpenGL / Instancing Handles
 GLuint cylinderVBO = 0;
@@ -124,6 +136,48 @@ void initShaders() {
 }
 
 /************************** File / Str Functions **********************************/
+
+
+// Worker function executed by the background thread
+#ifdef _WIN32
+DWORD WINAPI pipe_reader_thread(LPVOID lpParam) {
+#else
+void* pipe_reader_thread(void* arg) {
+#endif
+    uint32_t received_value;
+
+    // This blocks safely in the background until Python sends 4 bytes
+    while (fread(&received_value, sizeof(uint32_t), 1, stdin) == 1) {
+        // Atomically update, since: _Atomic unsigned int current_TID = 0;
+        current_TID = received_value;
+        printf("[3D_Vis] Background thread received T_ID: %u\n", current_TID.load());
+        //NOTE we don't redraw immediatly after current_TID has changed
+    }
+
+    return 0;
+}
+
+void start_pipe_listener_thread() {
+#ifdef _WIN32
+    DWORD threadId;
+    HANDLE hThread = CreateThread(NULL, 0, pipe_reader_thread, NULL, 0, &threadId);
+    if (hThread == NULL) {
+        fprintf(stderr, "Error: Failed to create Windows pipe reader thread.\n");
+    } else {
+        CloseHandle(hThread); // Detach thread handle
+    }
+#else
+    pthread_t thread;
+    int rc = pthread_create(&thread, NULL, pipe_reader_thread, NULL);
+    if (rc != 0) {
+        fprintf(stderr, "Error: Failed to create POSIX pthread.\n");
+    } else {
+        pthread_detach(thread); // Detach thread so it cleans up automatically on exit
+    }
+#endif
+}
+
+//----------------
 
 int read_config(const char* filename, Config* config) {
     printf("Opening %s...\n", filename);
@@ -207,6 +261,21 @@ void read_track_list(const char* filename) {
     fclose(file);
     if (colorf) fclose(colorf);
 }
+
+/*uint32_t read_from_pipe() {
+  //TODO Add in plot.cconf: current_TID from pipe (live vis) and Arrow Key Control Mode (manual)
+  uint32_t received_value;
+  // Read 4 raw bytes directly from stdin into memory
+  size_t bytes_read = fread(&received_value, sizeof(uint32_t), 1, stdin);
+
+  if (bytes_read == 1) {
+      printf("Successfully received unsigned integer: %u!\n",received_value);
+      return received_value;
+  }
+  //TODO debug mode
+  fprintf(stderr,"Failed to read unsigned integer from stdin pipe!\n");
+  return 0;
+}*/
 
 /****************************************************************/
 
@@ -301,7 +370,7 @@ void initInstancedBuffers() {
 
 void cameraText(void)
 {
-    int idx = current_TID;
+    int idx = current_TID.load();
 
     // Vector from camera position to track 0's start point.
     float dx = tracks[idx].start_x - camX;
@@ -503,7 +572,8 @@ void display() {
     glVertexAttribDivisor(5, 1);
 
     // Draw all instances up to current_TID in a single call!
-    unsigned int drawCount = (current_TID < numTracks) ? current_TID : numTracks;
+    unsigned int tid = current_TID.load();
+    unsigned int drawCount = (tid < numTracks) ? tid : numTracks;
     if (drawCount > 0) {
         glDrawArraysInstanced(GL_TRIANGLES, 0, cylinderVertexCount, drawCount);
     }
@@ -588,7 +658,7 @@ void specialKeyDown(int key, int x, int y) {
     }
 
     if (current_TID_changed) {
-        snprintf(TID_String, sizeof(TID_String), "T_ID: %u", current_TID);
+        snprintf(TID_String, sizeof(TID_String), "T_ID: %u", current_TID.load());
     }
 }
 
@@ -631,6 +701,13 @@ void handle_movement(int garbage) {
     glutTimerFunc(16, handle_movement, 0);
 }
 
+/*void update_current_TID(int garbage) {
+  uint32_t val = read_from_pipe();
+  if(val) {
+    current_TID = val;}
+  glutTimerFunc(16, update_current_TID, 0);
+}*/
+
 int main(int argc, char** argv) {
     read_config("plot.cconf", &config);
     read_track_list(config.tracks_to_plot);
@@ -672,6 +749,9 @@ int main(int argc, char** argv) {
     initShaders();
     initInstancedBuffers();
 
+    //Start the background thread to listen to the Dashboard via stdin pipe
+    start_pipe_listener_thread();
+
     //register callbacks
     glutDisplayFunc(display);
     glutReshapeFunc(reshape);
@@ -683,7 +763,6 @@ int main(int argc, char** argv) {
     glutSpecialFunc(specialKeyDown);
     glutSpecialUpFunc(specialKeyUp);
     glutTimerFunc(0, handle_movement, 0);
-
     glutMainLoop();
 
     free(tracks);
