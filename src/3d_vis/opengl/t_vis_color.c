@@ -156,8 +156,7 @@ void* pipe_reader_thread(void* arg) {
             fprintf(stderr, "[3D_Vis] Warning: Received out of bounds T_ID: %u, clamped to %u!\n",
               received_value, current_TID.load());
         }
-        // Atomically update, since: _Atomic unsigned int current_TID = 0;
-        current_TID = received_value;
+        snprintf(TID_String, sizeof(TID_String), "T_ID: %u", current_TID.load());
         printf("[3D_Vis] Background thread received T_ID: %u\n", current_TID.load());
         //NOTE we don't redraw immediatly after current_TID has changed
     }
