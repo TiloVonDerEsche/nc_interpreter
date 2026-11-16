@@ -84,6 +84,7 @@ https://cache.industry.siemens.com/dl/files/354/109779354/att_1019648/v1/MC_ncpr
 - **`0.3.9.5`** Modify `current_TID` with **LEFT_** and **RIGHT_ARROW**. Model only drawn up to `current_TID`. Hold **SHIFT** and, or **CTRL** for increased `rate_of_change`.
 - **`0.4.0.0`** Shader, VBO use for increased FPS. Positional and rotational live debug text, in the 3D vis. Target is T_start of Track with `current_TID` 
 - **`0.4.0.5`** Compiling Color_Config into an AST, for greatly reduced start-up time.
+- **`0.4.1.2`** Receiving uint32 values for current_TID through a stdin pipe.
 
 # Building **`generate_track_list.exe`** yourself:
 Requirements:
