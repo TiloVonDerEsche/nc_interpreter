@@ -34,7 +34,8 @@ int compile_color_config(FILE* fp);
 void map_color(Track* t);
 
 #define SPEED 0.3f
-#define SIDEBAR_WIDTH 400
+#define SIDEBAR_WIDTH 270
+#define PIPE_STOP UINT32_MAX //sentinel value to terminate the pipe reading
 
 typedef enum { CAM_FREECAM, CAM_ORBIT } CamMode;
 CamMode currentCamMode = CAM_FREECAM;
@@ -145,7 +146,7 @@ void initShaders() {
 /************************** File / Str Functions **********************************/
 
 
-// Worker function executed by the background thread
+//Worker function executed by the background thread
 #ifdef _WIN32
 DWORD WINAPI pipe_reader_thread(LPVOID lpParam) {
 #else
@@ -153,8 +154,10 @@ void* pipe_reader_thread(void* arg) {
 #endif
     uint32_t received_value;
 
-    // This blocks safely in the background until Python sends 4 bytes
+    //This blocks safely in the background until Caller Application sends 4 bytes
     while (fread(&received_value, sizeof(uint32_t), 1, stdin) == 1) {
+      if (received_value == PIPE_STOP) {break;}
+
         if (received_value < numTracks) {
             current_TID = received_value;
         } else {
@@ -163,10 +166,7 @@ void* pipe_reader_thread(void* arg) {
             fprintf(stderr, "[3D_Vis] Warning: Received out of bounds T_ID: %u, clamped to %u!\n",
               received_value, current_TID.load());
         }
-        //NOTE why does it work, despite it not being explicitly atomic?
-        snprintf(TID_String, sizeof(TID_String), "T_ID: %u", current_TID.load());
         printf("[3D_Vis] Background thread received T_ID: %u\n", current_TID.load());
-        //NOTE we don't redraw immediatly after current_TID has changed
     }
 
     return 0;
@@ -404,6 +404,7 @@ void cameraText(void)
     float forwardY = cosf(yawRad) * cosf(pitchRad);
     float forwardZ = sinf(pitchRad);
 
+    snprintf(TID_String, sizeof(TID_String), "T_ID: %u", current_TID.load());
     snprintf(camStrPos, sizeof(camStrPos), "Pos: (%.2f, %.2f, %.2f)",
       camX, camY, camZ);
     snprintf(camStrTarget, sizeof(camStrTarget), "Target: (%.2f, %.2f, %.2f)",
@@ -526,6 +527,19 @@ void display() {
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+    int winWidth = glutGet(GLUT_WINDOW_WIDTH);
+    int winHeight = glutGet(GLUT_WINDOW_HEIGHT);
+
+    // ==========================================
+    // Render 3D Scene, Restricted to Right Side
+    // ==========================================
+    int renderWidth = winWidth - SIDEBAR_WIDTH;
+    //TODO Necessary minWidth? Should be larger than 350
+    //if (renderWidth < 250) renderWidth = 250;
+
+    // Set viewport only for the 3D portion
+    glViewport(SIDEBAR_WIDTH, 0, renderWidth, winHeight);
+
     float aspect = (float)glutGet(GLUT_WINDOW_WIDTH) / (float)glutGet(GLUT_WINDOW_HEIGHT);
 
     // Projection Matrix (gluPerspective equivalent)
@@ -617,17 +631,20 @@ void display() {
     glDisableVertexAttribArray(5);
     glUseProgram(0);
 
+
+    //=================================================
+    // Render UI sidebar overlay, Full Window Viewport
+    //=================================================
+    glViewport(0, 0, winWidth, winHeight); //Reset viewport to cover entire window
     cameraText();
     renderUI();
+
     glutSwapBuffers();
 }
 
 void reshape(int w, int h) {
-    int renderWidth = w - SIDEBAR_WIDTH;
-    if (renderWidth < 100) renderWidth = 100; // Minimum viewport guard
-
-    // Viewport for 3D scene (shifted right to leave room for sidebar)
-    glViewport(SIDEBAR_WIDTH, 0, renderWidth, h);
+      //Just trigger a redisplay; the viewports are handled in display()
+      glutPostRedisplay();
 }
 
 // Handle Mouse Clicks for UI Buttons
@@ -746,6 +763,22 @@ void handle_movement(int garbage) {
     glutTimerFunc(16, handle_movement, 0);
 }
 
+void close_window_callback(void) {
+    static int is_closing = 0;
+    if (is_closing) return; //Prevent re-entry
+    is_closing = 1;
+
+    printf("[3D_Vis] Window closed. Exiting 3D_Visualizer...\n");
+    fprintf(stdin,"%u\n",123);
+    fprintf(stdin,"%u\n",123);
+    fprintf(stdin,"%u\n",123);
+    fprintf(stdin,"%u\n",123);
+    fprintf(stdin,"%u\n",123);
+
+
+    exit(0);
+}
+
 int main(int argc, char** argv) {
     read_config("plot.cconf", &config);
     read_track_list(config.tracks_to_plot);
@@ -769,6 +802,9 @@ int main(int argc, char** argv) {
     }
 
     glutInit(&argc, argv);
+    glutSetOption(
+        GLUT_ACTION_ON_WINDOW_CLOSE,
+        GLUT_ACTION_EXIT);
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
     glutInitWindowSize(800, 600);
     glutCreateWindow("3D Track Visualizer - Instanced");
@@ -801,8 +837,8 @@ int main(int argc, char** argv) {
     glutSpecialFunc(specialKeyDown);
     glutSpecialUpFunc(specialKeyUp);
     glutTimerFunc(0, handle_movement, 0);
+    glutCloseFunc(close_window_callback);
     glutMainLoop();
 
-    free(tracks);
     return 0;
 }
