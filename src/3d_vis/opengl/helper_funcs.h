@@ -12,6 +12,13 @@ typedef struct {
 } vec3D;
 
 typedef struct {
+  uint16_t xleft; //left x boundary
+  uint16_t xright; //NOTE 2^16-1 = 65535
+  uint16_t yupper;
+  uint16_t ylower; //lower y boundary
+} rect;
+
+typedef struct {
   vec3D normal;
   vec3D P;
 } plane;

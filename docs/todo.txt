@@ -1,22 +1,28 @@
+Perhaps we should think a new version naming scheme into existance. Perhaps two chars indicating if it is a nc_interpreter, or 3D_vis release, or both.
+So f.e.: 0.4.1.2-v, 0.4.1.2-n, 0.3.9.2-nv
+More readable:
+So f.e.: 0.4.1.2-vis, 0.4.1.2-nc, 0.3.9.2-nc_vis
+
 //====================Shipping==============//
 Make Download.md download the latest version,
 for the specified OS.
 Only the executables need to be handpicked.
-
-
-Seperate repo for nano syntax highlighting
-->cconf
-->cmap
-->c
-->bison, flex
-->py
 //==============Schmelz-Ki Integration============//
+plot.cconf:
+live_mode
+manual control mode
+-> Lock alternate option
 
-The integration with Schmelz-Ki.
-Meaning Schmelz-Ki Transmits a current_TID, which our 3D_Track_Vis receives,
-and uses to show the current printing process of the 3D_Model.
-Then perhaps the second 3D_Vis Mode, which orbits the 3D_Models,
-center of mass, meaning we rotate around the center of mass, instead of the camera.
+
+Second 3D_Vis Mode, which orbits the 3D_Models,
+center of mass, meaning we rotate around the center of mass,
+instead of the camera.
+
+-> Where should the mode selection UI live?
+->It only modifies the 3D_Vis. Also the orbit mode, is useful for standalone use
+Therefore the buttons should be on side- / bottom-panels of the 3D_Vis
+Can we somehow embed the whole vis window into the dashboard?
+Perhaps even the option to unembed.
 
 //================3D_Visualizer Bugs===============//
 Ctrl + c

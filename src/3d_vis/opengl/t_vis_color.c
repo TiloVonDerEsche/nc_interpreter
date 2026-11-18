@@ -34,6 +34,10 @@ int compile_color_config(FILE* fp);
 void map_color(Track* t);
 
 #define SPEED 0.3f
+#define SIDEBAR_WIDTH 400
+
+typedef enum { CAM_FREECAM, CAM_ORBIT } CamMode;
+CamMode currentCamMode = CAM_FREECAM;
 
 // Camera variables (will be initialized around track 0 in main)
 float camX = 0.0f, camY = 0.0f, camZ = 50.0f;
@@ -62,6 +66,9 @@ char camStrTPitch[32] =  "Target Pitch: 0.0°";
 char camStrDir[32] =     "Direction: (0.0, 0.0, 0.0)";
 char camStrDis[32] =     "Distance: 0.0";
 char camStrForward[32] = "Forward: (0.0, 0.0, 0.0)";
+
+//----ui button coords-----//
+rect btn_cam_mode = {0};
 
 int buttonDown = 0;
 int keys[256] = {0};
@@ -417,56 +424,93 @@ void cameraText(void)
       forwardX, forwardY, forwardZ);
 }
 
-void renderText() {
+// Render 2D UI Sidebar, with Text and Buttons
+void renderUI() {
+    //-------Setup-----------//
     glDisable(GL_DEPTH_TEST);
-
     glMatrixMode(GL_PROJECTION);
     glPushMatrix();
     glLoadIdentity();
     int width = glutGet(GLUT_WINDOW_WIDTH);
     int height = glutGet(GLUT_WINDOW_HEIGHT);
-    gluOrtho2D(0, width, 0, height);
+    gluOrtho2D(0, width, height, 0); //Origin->top left corner
 
     glMatrixMode(GL_MODELVIEW);
     glPushMatrix();
     glLoadIdentity();
 
-    glColor3f(0.0f, 1.0f, 0.0f);
 
-    glRasterPos2i(10, height - 20);
+    //--------Sidebar Background Panel (Dark Gray)------//
+    glColor3f(0.15f, 0.15f, 0.15f);
+    glBegin(GL_QUADS);
+        glVertex2f(0, 0);
+        glVertex2f(SIDEBAR_WIDTH, 0);
+        glVertex2f(SIDEBAR_WIDTH, height);
+        glVertex2f(0, height);
+    glEnd();
+
+    //------------Debug-Text-------------//
+    glColor3f(0.0f, 0.6f, 0.6f);
+    // Debug Text in Sidebar
+    int textY = 0;
+    glRasterPos2i(10, textY + 20);
     for (char* c = fpsString; *c != '\0'; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
-    glRasterPos2i(10, height - 40);
+    glRasterPos2i(10, textY + 40);
     for (char* c = rocString; *c != '\0'; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
-    glRasterPos2i(10, height - 60);
+    glRasterPos2i(10, textY + 60);
     for (char* c = TID_String; *c != '\0'; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
-    glRasterPos2i(10, height - 80);
+    glRasterPos2i(10, textY + 80);
     for (char* c = ambientString; *c != '\0'; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
-    glRasterPos2i(10, height - 120);
+    glRasterPos2i(10, textY + 120);
     for (char* c = camStrPos; *c != '\0'; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
-    glRasterPos2i(10, height - 140);
+    glRasterPos2i(10, textY + 140);
     for (char* c = camStrTarget; *c != '\0'; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
-    glRasterPos2i(10, height - 160);
+    glRasterPos2i(10, textY + 160);
     for (char* c = camStrYaw; *c != '\0'; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
-    glRasterPos2i(10, height - 180);
+    glRasterPos2i(10, textY + 180);
     for (char* c = camStrPitch; *c != '\0'; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
-    glRasterPos2i(10, height - 200);
+    glRasterPos2i(10, textY + 200);
     for (char* c = camStrTYaw; *c != '\0'; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
-    glRasterPos2i(10, height - 220);
+    glRasterPos2i(10, textY + 220);
     for (char* c = camStrTPitch; *c != '\0'; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
-    glRasterPos2i(10, height - 240);
+    glRasterPos2i(10, textY + 240);
     for (char* c = camStrDir; *c != '\0'; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
-    glRasterPos2i(10, height - 260);
+    glRasterPos2i(10, textY + 260);
     for (char* c = camStrDis; *c != '\0'; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
-    glRasterPos2i(10, height - 280);
+    glRasterPos2i(10, textY + 280);
     for (char* c = camStrForward; *c != '\0'; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
 
+    //---------------Draw Button ("Toggle Camera Mode")----------------//
+    int btnY = textY + 300;
+    //vec2D Origin = {0, 300};
+    btn_cam_mode.xleft = 10;
+    btn_cam_mode.xright = 220;
+    btn_cam_mode.yupper = btnY;
+    btn_cam_mode.ylower = btnY + 40;
+      //----Button Box ("Toggle Camera Mode")---//
+      glColor3f(0.3f, 0.3f, 0.5f);
+      glBegin(GL_QUADS);
+          glVertex2f(btn_cam_mode.xleft,  btn_cam_mode.yupper);
+          glVertex2f(btn_cam_mode.xright, btn_cam_mode.yupper);
+          glVertex2f(btn_cam_mode.xright, btn_cam_mode.ylower);
+          glVertex2f(btn_cam_mode.xleft,  btn_cam_mode.ylower);
+      glEnd();
+
+      //---Button Text ("Toggle Camera Mode")-//
+      glColor3f(1.0f, 1.0f, 1.0f);
+      uint16_t btn_c_height = btn_cam_mode.ylower - btn_cam_mode.yupper;
+      glRasterPos2i(20, btnY + btn_c_height / 2);
+      char btnText[64];
+      snprintf(btnText, sizeof(btnText), "Mode: %s", (currentCamMode == CAM_FREECAM) ? "Freecam" : "Orbit");
+      for (char* c = btnText; *c != '\0'; c++) glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
+    //---------Clean up--------//
     glPopMatrix();
     glMatrixMode(GL_PROJECTION);
     glPopMatrix();
     glMatrixMode(GL_MODELVIEW);
-
     glEnable(GL_DEPTH_TEST);
 }
+
 
 void display() {
     frameCount++;
@@ -494,19 +538,6 @@ void display() {
         0.0f, 0.0f, (zFar + zNear) / (zNear - zFar), -1.0f,
         0.0f, 0.0f, (2.0f * zFar * zNear) / (zNear - zFar), 0.0f
     };
-
-    // View Matrix (Camera rotation + translation)
-    /*glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
-    glRotatef(camYaw, 0, 0, 1);
-    glRotatef(camPitch, 1, 0, 0);
-    glTranslatef(-camX, -camY, -camZ);
-    GLfloat viewMat[16];
-    glGetFloatv(GL_MODELVIEW_MATRIX, viewMat);*/
-    // View Matrix: Z-up coordinate system.
-    // Yaw 0 looks along +Y.
-    // Positive yaw turns toward +X.
-    // Positive pitch looks upward toward +Z.
 
     float yawRad = camYaw * (float)M_PI / 180.0f;
     float pitchRad = camPitch * (float)M_PI / 180.0f;
@@ -587,18 +618,30 @@ void display() {
     glUseProgram(0);
 
     cameraText();
-    renderText();
+    renderUI();
     glutSwapBuffers();
 }
 
 void reshape(int w, int h) {
-    glViewport(0, 0, w, h);
+    int renderWidth = w - SIDEBAR_WIDTH;
+    if (renderWidth < 100) renderWidth = 100; // Minimum viewport guard
+
+    // Viewport for 3D scene (shifted right to leave room for sidebar)
+    glViewport(SIDEBAR_WIDTH, 0, renderWidth, h);
 }
 
-void mouseEntry(int state) {
-    if (state == GLUT_ENTERED) {
-        rate_of_change = 1;
-        for (int i = 0; i < 256; i++) keys[i] = 0;
+// Handle Mouse Clicks for UI Buttons
+void uiMouseHandler(int button, int state, int x, int y) {
+    if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
+
+        // Check if click is inside the sidebar button bounds
+        if (x >= btn_cam_mode.xleft &&  x <= btn_cam_mode.xright &&
+            y >= btn_cam_mode.yupper && y <= btn_cam_mode.ylower) {
+            // Toggle Camera Mode
+            currentCamMode = (currentCamMode == CAM_FREECAM) ? CAM_ORBIT : CAM_FREECAM;
+            printf("[UI] Camera mode switched to: %s\n", (currentCamMode == CAM_FREECAM) ? "Freecam" : "Orbit");
+            glutPostRedisplay();
+        }
     }
 }
 
@@ -607,6 +650,14 @@ void mouse(int button, int state, int x, int y) {
         buttonDown = (state == GLUT_DOWN);
         lastX = x;
         lastY = y;
+        uiMouseHandler(button, state, x, y);
+    }
+}
+
+void mouseEntry(int state) {
+    if (state == GLUT_ENTERED) {
+        rate_of_change = 1;
+        for (int i = 0; i < 256; i++) keys[i] = 0;
     }
 }
 
