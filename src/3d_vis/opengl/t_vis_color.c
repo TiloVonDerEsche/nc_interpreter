@@ -51,7 +51,7 @@ float orbitPitch = 15.0f;    // Elevation angle above/below XY plane
 
 // Smoothed target position for interpolation
 float smoothTargetX = 0.0f, smoothTargetY = 0.0f, smoothTargetZ = 0.0f;
-
+float targetX = 0.0f, targetY = 0.0f, targetZ = 0.0f;
 
 int lastX = 0, lastY = 0;
 
@@ -563,9 +563,9 @@ void display() {
     // Calculate camera position based on mode
     unsigned int cTID = current_TID.load();
     if (cTID >= numTracks) cTID = numTracks - 1;
-    float targetX = tracks[cTID].start_x;
-    float targetY = tracks[cTID].start_y;
-    float targetZ = tracks[cTID].start_z;
+    targetX = tracks[cTID].start_x;
+    targetY = tracks[cTID].start_y;
+    targetZ = tracks[cTID].start_z;
 
     // Smoothly interpolate (lerp) current target toward the goal target
     // A factor around 0.15 to 0.25 provides a snappy yet smooth glide
@@ -689,9 +689,27 @@ void uiMouseHandler(int button, int state, int x, int y) {
         // Check if click is inside the sidebar button bounds
         if (x >= btn_cam_mode.xleft &&  x <= btn_cam_mode.xright &&
             y >= btn_cam_mode.yupper && y <= btn_cam_mode.ylower) {
-            // Toggle Camera Mode
-            currentCamMode = (currentCamMode == CAM_FREECAM) ? CAM_ORBIT : CAM_FREECAM;
-            printf("[UI] Camera mode switched to: %s\n", (currentCamMode == CAM_FREECAM) ? "Freecam" : "Orbit");
+
+              if (currentCamMode == CAM_ORBIT) {
+                // Switching from Orbit to Freecam:
+                // Keep current camX, camY, camZ and synchronize Freecam Yaw,Pitch
+                // so that we look directly at the smoothed target vertex.
+                float dx = targetX - camX;
+                float dy = targetY - camY;
+                float dz = targetZ - camZ;
+
+                float horizontal = sqrtf(dx * dx + dy * dy);
+                camYaw = atan2f(dx, dy) * 180.0f / (float)M_PI;
+                camPitch = atan2f(dz, horizontal) * 180.0f / (float)M_PI;
+
+                currentCamMode = CAM_FREECAM;
+                printf("[UI] Camera mode switched to: Freecam\n");
+
+              } else{
+                currentCamMode = CAM_ORBIT;
+                printf("[UI] Camera mode switched to: Orbit\n");
+              }
+
             glutPostRedisplay();
         }
     }
@@ -837,12 +855,15 @@ int main(int argc, char** argv) {
 
     // Initialize camera facing track 0's start point
     if (numTracks > 0) {
-            smoothTargetX = tracks[0].start_x;
-            smoothTargetY = tracks[0].start_y;
-            smoothTargetZ = tracks[0].start_z;
-            camX = smoothTargetX;
-            camY = smoothTargetY - 50.0f;
-            camZ = smoothTargetZ + 10.0f;
+            targetX = tracks[0].start_x;
+            targetY = tracks[0].start_y;
+            targetZ = tracks[0].start_z;
+            smoothTargetX = targetX;
+            smoothTargetY = targetY;
+            smoothTargetZ = targetZ;
+            camX = targetX;
+            camY = targetY - 50.0f;
+            camZ = targetZ + 10.0f;
             orbitRadius = 50.0f;
             orbitAngle = 0.0f;
             orbitPitch = 15.0f;
