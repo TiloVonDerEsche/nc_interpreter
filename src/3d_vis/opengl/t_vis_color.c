@@ -49,6 +49,9 @@ float orbitRadius = 50.0f;
 float orbitAngle = 0.0f;     // Azimuth angle around the target in XY plane
 float orbitPitch = 15.0f;    // Elevation angle above/below XY plane
 
+// Smoothed target position for interpolation
+float smoothTargetX = 0.0f, smoothTargetY = 0.0f, smoothTargetZ = 0.0f;
+
 
 int lastX = 0, lastY = 0;
 
@@ -564,18 +567,25 @@ void display() {
     float targetY = tracks[cTID].start_y;
     float targetZ = tracks[cTID].start_z;
 
+    // Smoothly interpolate (lerp) current target toward the goal target
+    // A factor around 0.15 to 0.25 provides a snappy yet smooth glide
+    float lerpFactor = 0.2f;
+    smoothTargetX += (targetX - smoothTargetX) * lerpFactor;
+    smoothTargetY += (targetY - smoothTargetY) * lerpFactor;
+    smoothTargetZ += (targetZ - smoothTargetZ) * lerpFactor;
+
     if (currentCamMode == CAM_ORBIT) {
         float radAngle = orbitAngle * (float)M_PI / 180.0f;
         float radPitch = orbitPitch * (float)M_PI / 180.0f;
 
         // Spherical coordinates mapping relative to target vertex (XY plane base)
-        camX = targetX + orbitRadius * cosf(radPitch) * sinf(radAngle);
-        camY = targetY + orbitRadius * cosf(radPitch) * cosf(radAngle);
-        camZ = targetZ + orbitRadius * sinf(radPitch);
+        camX = smoothTargetX + orbitRadius * cosf(radPitch) * sinf(radAngle);
+        camY = smoothTargetY + orbitRadius * cosf(radPitch) * cosf(radAngle);
+        camZ = smoothTargetZ + orbitRadius * sinf(radPitch);
     }
 
     glMatrixMode(GL_MODELVIEW); //NOTE why in the middle
-    glLoadIdentity();           //NOTE what is it doing
+    glLoadIdentity();
 
     if (currentCamMode == CAM_FREECAM) {
         float yawRad = camYaw * (float)M_PI / 180.0f;
@@ -593,7 +603,7 @@ void display() {
         // Orbit mode: Look directly at the target vertex
         gluLookAt(
             camX, camY, camZ,
-            targetX, targetY, targetZ,
+            smoothTargetX, smoothTargetY, smoothTargetZ,
             0.0f, 0.0f, 1.0f
         );
     }
@@ -827,13 +837,16 @@ int main(int argc, char** argv) {
 
     // Initialize camera facing track 0's start point
     if (numTracks > 0) {
-      camX = tracks[0].start_x;
-      camY = tracks[0].start_y - 50.0f;
-      camZ = tracks[0].start_z + 10.0f;
-      orbitRadius = 50.0f;
-      orbitAngle = 0.0f;
-      orbitPitch = 15.0f;
-    }
+            smoothTargetX = tracks[0].start_x;
+            smoothTargetY = tracks[0].start_y;
+            smoothTargetZ = tracks[0].start_z;
+            camX = smoothTargetX;
+            camY = smoothTargetY - 50.0f;
+            camZ = smoothTargetZ + 10.0f;
+            orbitRadius = 50.0f;
+            orbitAngle = 0.0f;
+            orbitPitch = 15.0f;
+        }
 
     min_z = tracks[0].start_z;
     max_z = tracks[0].start_z;
