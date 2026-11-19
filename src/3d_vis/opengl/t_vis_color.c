@@ -40,9 +40,16 @@ void map_color(Track* t);
 typedef enum { CAM_FREECAM, CAM_ORBIT } CamMode;
 CamMode currentCamMode = CAM_FREECAM;
 
-// Camera variables (will be initialized around track 0 in main)
+//Camera variables
 float camX = 0.0f, camY = 0.0f, camZ = 50.0f;
 float camRoll = 0.0f, camPitch = 15.0f, camYaw = 0.0f;
+
+//Specific Orbit mode variables
+float orbitRadius = 50.0f;
+float orbitAngle = 0.0f;     // Azimuth angle around the target in XY plane
+float orbitPitch = 15.0f;    // Elevation angle above/below XY plane
+
+
 int lastX = 0, lastY = 0;
 
 int frameCount = 0;
@@ -370,13 +377,13 @@ void initInstancedBuffers() {
 
 void cameraText(void)
 {
-    unsigned int idx = current_TID.load();
-    if (idx >= numTracks) {idx = numTracks-1;}
+    unsigned int cTID = current_TID.load();
+    if (cTID >= numTracks) {cTID = numTracks-1;}
 
     // Vector from camera position to track 0's start point.
-    float dx = tracks[idx].start_x - camX;
-    float dy = tracks[idx].start_y - camY;
-    float dz = tracks[idx].start_z - camZ;
+    float dx = tracks[cTID].start_x - camX;
+    float dy = tracks[cTID].start_y - camY;
+    float dz = tracks[cTID].start_z - camZ;
 
     float horizontal = sqrtf(dx * dx + dy * dy);
     float distance = sqrtf(dx * dx + dy * dy + dz * dz);
@@ -408,7 +415,7 @@ void cameraText(void)
     snprintf(camStrPos, sizeof(camStrPos), "Pos: (%.2f, %.2f, %.2f)",
       camX, camY, camZ);
     snprintf(camStrTarget, sizeof(camStrTarget), "Target: (%.2f, %.2f, %.2f)",
-      tracks[idx].start_x,tracks[idx].start_y,tracks[idx].start_z);
+      tracks[cTID].start_x,tracks[cTID].start_y,tracks[cTID].start_z);
     snprintf(camStrYaw, sizeof(camStrYaw), "Yaw: %.2f°",
       camYaw);
     snprintf(camStrPitch, sizeof(camStrPitch), "Pitch: %.2f°",
@@ -529,14 +536,11 @@ void display() {
 
     int winWidth = glutGet(GLUT_WINDOW_WIDTH);
     int winHeight = glutGet(GLUT_WINDOW_HEIGHT);
+    int renderWidth = winWidth - SIDEBAR_WIDTH;
 
     // ==========================================
     // Render 3D Scene, Restricted to Right Side
     // ==========================================
-    int renderWidth = winWidth - SIDEBAR_WIDTH;
-    //TODO Necessary minWidth? Should be larger than 350
-    //if (renderWidth < 250) renderWidth = 250;
-
     // Set viewport only for the 3D portion
     glViewport(SIDEBAR_WIDTH, 0, renderWidth, winHeight);
 
@@ -553,27 +557,50 @@ void display() {
         0.0f, 0.0f, (2.0f * zFar * zNear) / (zNear - zFar), 0.0f
     };
 
-    float yawRad = camYaw * (float)M_PI / 180.0f;
-    float pitchRad = camPitch * (float)M_PI / 180.0f;
+    // Calculate camera position based on mode
+    unsigned int cTID = current_TID.load();
+    if (cTID >= numTracks) cTID = numTracks - 1;
+    float targetX = tracks[cTID].start_x;
+    float targetY = tracks[cTID].start_y;
+    float targetZ = tracks[cTID].start_z;
 
-    float forwardX = sinf(yawRad) * cosf(pitchRad);
-    float forwardY = cosf(yawRad) * cosf(pitchRad);
-    float forwardZ = sinf(pitchRad);
+    if (currentCamMode == CAM_ORBIT) {
+        float radAngle = orbitAngle * (float)M_PI / 180.0f;
+        float radPitch = orbitPitch * (float)M_PI / 180.0f;
 
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
+        // Spherical coordinates mapping relative to target vertex (XY plane base)
+        camX = targetX + orbitRadius * cosf(radPitch) * sinf(radAngle);
+        camY = targetY + orbitRadius * cosf(radPitch) * cosf(radAngle);
+        camZ = targetZ + orbitRadius * sinf(radPitch);
+    }
 
-    gluLookAt(
-        camX, camY, camZ,
-        camX + forwardX,
-        camY + forwardY,
-        camZ + forwardZ,
-        0.0f, 0.0f, 1.0f  // Z is up
-    );
+    glMatrixMode(GL_MODELVIEW); //NOTE why in the middle
+    glLoadIdentity();           //NOTE what is it doing
+
+    if (currentCamMode == CAM_FREECAM) {
+        float yawRad = camYaw * (float)M_PI / 180.0f;
+        float pitchRad = camPitch * (float)M_PI / 180.0f;
+        float forwardX = sinf(yawRad) * cosf(pitchRad);
+        float forwardY = cosf(yawRad) * cosf(pitchRad);
+        float forwardZ = sinf(pitchRad);
+
+        gluLookAt(
+            camX, camY, camZ,
+            camX + forwardX, camY + forwardY, camZ + forwardZ,
+            0.0f, 0.0f, 1.0f
+        ); // Z is up
+    } else {
+        // Orbit mode: Look directly at the target vertex
+        gluLookAt(
+            camX, camY, camZ,
+            targetX, targetY, targetZ,
+            0.0f, 0.0f, 1.0f
+        );
+    }
+
 
     GLfloat viewMat[16];
     glGetFloatv(GL_MODELVIEW_MATRIX, viewMat);
-
 
     // Use Custom Shader Program
     glUseProgram(shaderProgram);
@@ -611,8 +638,7 @@ void display() {
     glVertexAttribDivisor(5, 1);
 
     // Draw all instances up to current_TID in a single call!
-    unsigned int tid = current_TID.load();
-    unsigned int drawCount = (tid < numTracks) ? tid : numTracks - 1;
+    unsigned int drawCount = (cTID < numTracks) ? cTID : numTracks - 1;
     if (drawCount > 0) {
         glDrawArraysInstanced(GL_TRIANGLES, 0, cylinderVertexCount, drawCount);
     }
@@ -650,7 +676,6 @@ void reshape(int w, int h) {
 // Handle Mouse Clicks for UI Buttons
 void uiMouseHandler(int button, int state, int x, int y) {
     if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
-
         // Check if click is inside the sidebar button bounds
         if (x >= btn_cam_mode.xleft &&  x <= btn_cam_mode.xright &&
             y >= btn_cam_mode.yupper && y <= btn_cam_mode.ylower) {
@@ -680,15 +705,24 @@ void mouseEntry(int state) {
 
 void motion(int x, int y) {
     if (buttonDown) {
-        camYaw += (x - lastX) * 0.1f;
-        camPitch -= (y - lastY) * 0.1f;
-        if (camPitch > 89.0f) camPitch = 89.0f;
-        if (camPitch < -89.0f) camPitch = -89.0f;
+        if (currentCamMode == CAM_FREECAM) {
+            camYaw += (x - lastX) * 0.1f;
+            camPitch -= (y - lastY) * 0.1f;
+            if (camPitch > 89.0f) camPitch = 89.0f;
+            if (camPitch < -89.0f) camPitch = -89.0f;
+        } else {
+            // Orbit mode mouse panning / looking around target
+            orbitAngle += (x - lastX) * 0.2f;
+            orbitPitch += (y - lastY) * 0.2f;
+            if (orbitPitch > 89.0f) orbitPitch = 89.0f;
+            if (orbitPitch < -89.0f) orbitPitch = -89.0f;
+        }
         lastX = x;
         lastY = y;
         glutPostRedisplay();
     }
 }
+
 
 void keyDown(unsigned char key, int x, int y) { keys[tolower(key)] = 1; }
 void keyUp(unsigned char key, int x, int y) { keys[tolower(key)] = 0; }
@@ -738,16 +772,28 @@ void specialKeyUp(int key, int x, int y) {
 
 void handle_movement(int garbage) {
     float speed = SPEED * rate_of_change;
-    float yawRad = camYaw * M_PI / 180.0f;
-    float forwardX = sinf(yawRad), forwardY = cosf(yawRad);
-    float rightX = cosf(yawRad), rightY = -sinf(yawRad);
 
-    if (keys['w']) { camX += forwardX * speed; camY += forwardY * speed; }
-    if (keys['s']) { camX -= forwardX * speed; camY -= forwardY * speed; }
-    if (keys['a']) { camX -= rightX * speed; camY -= rightY * speed; }
-    if (keys['d']) { camX += rightX * speed; camY += rightY * speed; }
-    if (keys[' ']) { camZ += speed; }
-    if (keys['c']) { camZ -= speed; }
+    if (currentCamMode == CAM_FREECAM) {
+        float yawRad = camYaw * M_PI / 180.0f;
+        float forwardX = sinf(yawRad), forwardY = cosf(yawRad);
+        float rightX = cosf(yawRad), rightY = -sinf(yawRad);
+
+        if (keys['w']) { camX += forwardX * speed; camY += forwardY * speed; }
+        if (keys['s']) { camX -= forwardX * speed; camY -= forwardY * speed; }
+        if (keys['a']) { camX -= rightX * speed; camY -= rightY * speed; }
+        if (keys['d']) { camX += rightX * speed; camY += rightY * speed; }
+        if (keys[' ']) { camZ += speed; }
+        if (keys['c']) { camZ -= speed; }
+    } else { //CAM_ORBIT
+        if (keys['w']) { orbitRadius -= speed;} //if(orbitRadius < 1.0f) {orbitRadius = 1.0f;}
+        if (keys['s']) { orbitRadius += speed; }
+        // A/D move the camera along the orbit circle around the target vertex
+        if (keys['a']) { orbitAngle -= speed * 2.0f; }
+        if (keys['d']) { orbitAngle += speed * 2.0f; }
+        // SPACE/C can be used to elevate the orbit plane or angle relative to the XY plane
+        if (keys[' ']) { orbitPitch += speed * 2.0f; if (orbitPitch > 89.0f) {orbitPitch = 89.0f;}}
+        if (keys['c']) { orbitPitch -= speed * 2.0f; if (orbitPitch < -89.0f) {orbitPitch = -89.0f;}}
+    }
 
     unsigned int ambient_changed = 0;
     if (keys['i']) { ambientIntensity += 0.01f; if (ambientIntensity > 1.0f) ambientIntensity = 1.0f; ambient_changed = 1; }
@@ -769,12 +815,6 @@ void close_window_callback(void) {
     is_closing = 1;
 
     printf("[3D_Vis] Window closed. Exiting 3D_Visualizer...\n");
-    fprintf(stdin,"%u\n",123);
-    fprintf(stdin,"%u\n",123);
-    fprintf(stdin,"%u\n",123);
-    fprintf(stdin,"%u\n",123);
-    fprintf(stdin,"%u\n",123);
-
 
     exit(0);
 }
@@ -785,11 +825,12 @@ int main(int argc, char** argv) {
 
     // Initialize camera facing track 0's start point
     if (numTracks > 0) {
-        camX = tracks[0].start_x;
-        camY = tracks[0].start_y; // Position camera back along Y
-        camZ = tracks[0].start_z; // Position slightly above Z
-        camPitch = 0.0f;
-        camYaw = 0.0f;
+      camX = tracks[0].start_x;
+      camY = tracks[0].start_y - 50.0f;
+      camZ = tracks[0].start_z + 10.0f;
+      orbitRadius = 50.0f;
+      orbitAngle = 0.0f;
+      orbitPitch = 15.0f;
     }
 
     min_z = tracks[0].start_z;
