@@ -785,8 +785,10 @@ void handle_movement(int garbage) {
         if (keys[' ']) { camZ += speed; }
         if (keys['c']) { camZ -= speed; }
     } else { //CAM_ORBIT
-        if (keys['w']) { orbitRadius -= speed;} //if(orbitRadius < 1.0f) {orbitRadius = 1.0f;}
-        if (keys['s']) { orbitRadius += speed; }
+        float orbit_speed_factor = 0.1;
+        if (keys['w']) { orbitRadius -= speed * orbit_speed_factor;
+        if(orbitRadius < 1.0f) {orbitRadius = 1.0f;}}
+        if (keys['s']) { orbitRadius += speed * orbit_speed_factor; }
         // A/D move the camera along the orbit circle around the target vertex
         if (keys['a']) { orbitAngle -= speed * 2.0f; }
         if (keys['d']) { orbitAngle += speed * 2.0f; }
