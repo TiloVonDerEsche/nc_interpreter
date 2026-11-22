@@ -39,7 +39,6 @@ void map_color(Track* t);
 
 #define SPEED 0.3f
 #define SIDEBAR_WIDTH 270
-#define PIPE_STOP UINT32_MAX //sentinel value to terminate the pipe reading
 
 typedef enum { CAM_FREECAM, CAM_ORBIT } CamMode;
 CamMode currentCamMode = CAM_FREECAM;
@@ -180,8 +179,6 @@ void* pipe_reader_thread(void* arg) {
         bytes_read = read(0, &received_value, sizeof(uint32_t));
         if (bytes_read <= 0) { break; }
 #endif
-
-        if (received_value == PIPE_STOP) { break; }
 
         if (received_value < numTracks) {
             current_TID = received_value;
