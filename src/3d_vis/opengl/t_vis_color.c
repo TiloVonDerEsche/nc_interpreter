@@ -218,8 +218,9 @@ void close_window_callback(void) {
 
     printf("[3D_Vis] Window closed. Shutting down background pipe reader...\n");
 
-    // 1. Force close the underlying input file descriptor/handle
+    //Force close the underlying input file descriptor/handle
 #ifdef _WIN32
+    //TODO test on windows!
     HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
     if (hStdin != INVALID_HANDLE_VALUE) {
         CancelSynchronousIo(hPipeReaderThread);
@@ -231,7 +232,7 @@ void close_window_callback(void) {
     close(0);
 #endif
 
-    // 2. Join the background thread
+    //Join the background thread
 #ifdef _WIN32
     if (hPipeReaderThread != NULL) {
         DWORD waitResult = WaitForSingleObject(hPipeReaderThread, 1000);
@@ -784,6 +785,35 @@ void mouseEntry(int state) {
     }
 }
 
+void mouseWheel(int button, int direction, int x, int y) {
+    float wheel_speed = SPEED * rate_of_change * 2.0f;
+
+    // direction > 0 means scroll forward (wheel up), corresponding to 'w'
+    // direction < 0 means scroll backward (wheel down), corresponding to 's'
+    if (direction > 0) {
+        if (currentCamMode == CAM_ORBIT) {
+            orbitRadius -= wheel_speed;
+            if (orbitRadius < 1.0f) orbitRadius = 1.0f;
+        } else {
+            // Freecam: scroll forward moves forward
+            float yawRad = camYaw * M_PI / 180.0f;
+            camX += sinf(yawRad) * wheel_speed;
+            camY += cosf(yawRad) * wheel_speed;
+        }
+    } else {
+        if (currentCamMode == CAM_ORBIT) {
+            orbitRadius += wheel_speed;
+        } else {
+            // Freecam: scroll backward moves backward
+            float yawRad = camYaw * M_PI / 180.0f;
+            camX -= sinf(yawRad) * wheel_speed;
+            camY -= cosf(yawRad) * wheel_speed;
+        }
+    }
+    glutPostRedisplay();
+}
+
+
 void motion(int x, int y) {
     if (buttonDown) {
         if (currentCamMode == CAM_FREECAM) {
@@ -953,6 +983,7 @@ int main(int argc, char** argv) {
     glutReshapeFunc(reshape);
     glutEntryFunc(mouseEntry);
     glutMouseFunc(mouse);
+    glutMouseWheelFunc(mouseWheel);
     glutMotionFunc(motion);
     glutKeyboardFunc(keyDown);
     glutKeyboardUpFunc(keyUp);
