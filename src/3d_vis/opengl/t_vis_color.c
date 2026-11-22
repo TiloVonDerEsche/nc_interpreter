@@ -90,7 +90,6 @@ int keys[256] = {0};
 // Track data
 Track* tracks = NULL;
 unsigned int numTracks = 0;
-float min_z, max_z;
 
 Config config = {0};
 
@@ -943,15 +942,6 @@ int main(int argc, char** argv) {
             orbitAngle = 0.0f;
             orbitPitch = 15.0f;
         }
-
-    min_z = tracks[0].start_z;
-    max_z = tracks[0].start_z;
-    for (int i = 0; i < numTracks; i++) {
-        if (tracks[i].start_z < min_z) min_z = tracks[i].start_z;
-        if (tracks[i].start_z > max_z) max_z = tracks[i].start_z;
-        if (tracks[i].end_z < min_z) min_z = tracks[i].end_z;
-        if (tracks[i].end_z > max_z) max_z = tracks[i].end_z;
-    }
 
     glutInit(&argc, argv);
     glutSetOption(

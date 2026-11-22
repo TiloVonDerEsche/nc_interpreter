@@ -11,6 +11,8 @@ Make Download.md download the latest version,
 for the specified OS.
 Only the executables need to be handpicked.
 //==============Schmelz-Ki Integration============//
+
+//==============UI additions==============//
 //TODO set sensitivity via plot.cconf or sensitivity sliders
 //-> perhaps save sens in plot.cconf and adjust them live via sliders
 //->perhaps input field, for finer control, make all text editable?
@@ -21,8 +23,7 @@ Add button for current_TID control mode
 ->live mode react to pipe values
 ->manual mode ignore pipe values, control with LEFT RIGHT
 
-W,S Orbit mode zooming, i.e. orbit radius modification via SCROLL WHEEL
-
+//----Not advisable
 Can we somehow embed the whole vis window into the dashboard?
 Perhaps even the option to unembed.
 ->Depends on OS interface -> breaks OS independence
