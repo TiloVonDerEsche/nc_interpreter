@@ -19,11 +19,15 @@
 #include <windows.h>
 #else
 #include <pthread.h>
+#include <unistd.h> //read(), close()
 #endif
 
-/*#include <stdatomic.h>
-// Atomic variable shared between background pipe_reader thread and OpenGL main thread
-_Atomic unsigned int current_TID = 0;*/
+#ifdef _WIN32
+HANDLE hPipeReaderThread = NULL;
+DWORD pipeReaderThreadId = 0;
+#else
+pthread_t pipeReaderThread;
+#endif
 
 // Atomic variable shared between background pipe_reader thread and OpenGL main thread
 #include <atomic>
@@ -156,7 +160,7 @@ void initShaders() {
 /************************** File / Str Functions **********************************/
 
 
-//Worker function executed by the background thread
+//Reads uint32 values from stdin, and saves them to current_TID atomic.
 #ifdef _WIN32
 DWORD WINAPI pipe_reader_thread(LPVOID lpParam) {
 #else
@@ -164,15 +168,25 @@ void* pipe_reader_thread(void* arg) {
 #endif
     uint32_t received_value;
 
-    //This blocks safely in the background until Caller Application sends 4 bytes
-    while (fread(&received_value, sizeof(uint32_t), 1, stdin) == 1) {
-      if (received_value == PIPE_STOP) {break;}
+    // Read raw bytes from stdin file descriptor
+    while (1) {
+        ssize_t bytes_read;
+#ifdef _WIN32
+        DWORD total_read = 0;
+        // Using ReadFile for Windows handles/stdin descriptor
+        BOOL success = ReadFile(GetStdHandle(STD_INPUT_HANDLE), &received_value, sizeof(uint32_t), &total_read, NULL);
+        if (!success || total_read == 0) { break; }
+#else
+        bytes_read = read(0, &received_value, sizeof(uint32_t));
+        if (bytes_read <= 0) { break; }
+#endif
+
+        if (received_value == PIPE_STOP) { break; }
 
         if (received_value < numTracks) {
             current_TID = received_value;
         } else {
-            // Clamp to max valid track ID if out of bounds
-            current_TID = numTracks-1;
+            current_TID = numTracks - 1;
             fprintf(stderr, "[3D_Vis] Warning: Received out of bounds T_ID: %u, clamped to %u!\n",
               received_value, current_TID.load());
         }
@@ -182,25 +196,67 @@ void* pipe_reader_thread(void* arg) {
     return 0;
 }
 
+
 void start_pipe_listener_thread() {
 #ifdef _WIN32
-    DWORD threadId;
-    HANDLE hThread = CreateThread(NULL, 0, pipe_reader_thread, NULL, 0, &threadId);
-    if (hThread == NULL) {
+    hPipeReaderThread = CreateThread(NULL, 0, pipe_reader_thread, NULL, 0, &pipeReaderThreadId);
+    if (hPipeReaderThread == NULL) {
         fprintf(stderr, "Error: Failed to create Windows pipe reader thread.\n");
-    } else {
-        CloseHandle(hThread); // Detach thread handle
     }
 #else
-    pthread_t thread;
-    int rc = pthread_create(&thread, NULL, pipe_reader_thread, NULL);
+    int rc = pthread_create(&pipeReaderThread, NULL, pipe_reader_thread, NULL);
     if (rc != 0) {
         fprintf(stderr, "Error: Failed to create POSIX pthread.\n");
-    } else {
-        pthread_detach(thread); // Detach thread so it cleans up automatically on exit
     }
 #endif
 }
+
+
+
+//Close pipeReaderThread, when exiting the 3D_Vis Application
+void close_window_callback(void) {
+    static int is_closing = 0;
+    if (is_closing) return; // Prevent re-entry
+    is_closing = 1;
+
+    printf("[3D_Vis] Window closed. Shutting down background pipe reader...\n");
+
+    // 1. Force close the underlying input file descriptor/handle
+#ifdef _WIN32
+    HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
+    if (hStdin != INVALID_HANDLE_VALUE) {
+        CancelSynchronousIo(hPipeReaderThread);
+        CloseHandle(hStdin);
+    }
+#else
+    // Cancel the background thread blocked on read(0, ...)
+    pthread_cancel(pipeReaderThread);
+    close(0);
+#endif
+
+    // 2. Join the background thread
+#ifdef _WIN32
+    if (hPipeReaderThread != NULL) {
+        DWORD waitResult = WaitForSingleObject(hPipeReaderThread, 1000);
+        if (waitResult == WAIT_TIMEOUT) {
+            fprintf(stderr, "[3D_Vis] Warning: Pipe reader thread did not exit in time, terminating...\n");
+            TerminateThread(hPipeReaderThread, 1);
+        }
+        CloseHandle(hPipeReaderThread);
+        hPipeReaderThread = NULL;
+    }
+#else
+    void* res;
+    int rc = pthread_join(pipeReaderThread, &res);
+    if (rc != 0 && rc != ESRCH) {
+        fprintf(stderr, "[3D_Vis] Error: Failed to join POSIX pthread (code: %d).\n", rc);
+    }
+#endif
+
+    printf("[3D_Vis] Exiting 3D_Visualizer...\n");
+    exit(0);
+}
+
 
 //----------------
 
@@ -568,8 +624,8 @@ void display() {
     targetZ = tracks[cTID].start_z;
 
     // Smoothly interpolate (lerp) current target toward the goal target
-    // A factor around 0.15 to 0.25 provides a snappy yet smooth glide
-    float lerpFactor = 0.2f;
+    // A factor around  0.05f provides a snappy yet smooth glide
+    float lerpFactor = 0.001f; //TODO set this via plot.cconf
     smoothTargetX += (targetX - smoothTargetX) * lerpFactor;
     smoothTargetY += (targetY - smoothTargetY) * lerpFactor;
     smoothTargetZ += (targetZ - smoothTargetZ) * lerpFactor;
@@ -813,7 +869,9 @@ void handle_movement(int garbage) {
         if (keys[' ']) { camZ += speed; }
         if (keys['c']) { camZ -= speed; }
     } else { //CAM_ORBIT
-        float orbit_speed_factor = 0.1;
+        //TODO set sensitivity via plot.cconf or sensitivity sliders
+        //-> perhaps save sens in plot.cconf and adjust them live via sliders
+        float orbit_speed_factor = 1.0;
         if (keys['w']) { orbitRadius -= speed * orbit_speed_factor;
         if(orbitRadius < 1.0f) {orbitRadius = 1.0f;}}
         if (keys['s']) { orbitRadius += speed * orbit_speed_factor; }
@@ -837,16 +895,6 @@ void handle_movement(int garbage) {
 
     glutPostRedisplay();
     glutTimerFunc(16, handle_movement, 0);
-}
-
-void close_window_callback(void) {
-    static int is_closing = 0;
-    if (is_closing) return; //Prevent re-entry
-    is_closing = 1;
-
-    printf("[3D_Vis] Window closed. Exiting 3D_Visualizer...\n");
-
-    exit(0);
 }
 
 int main(int argc, char** argv) {
