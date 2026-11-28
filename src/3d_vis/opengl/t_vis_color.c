@@ -928,6 +928,7 @@ int main(int argc, char** argv) {
     read_track_list(config.tracks_to_plot);
 
     // Initialize camera facing track 0's start point
+    //TODO make this work
     if (numTracks > 0) {
             targetX = tracks[0].start_x;
             targetY = tracks[0].start_y;

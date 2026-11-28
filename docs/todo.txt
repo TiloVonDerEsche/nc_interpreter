@@ -1,3 +1,28 @@
+
+//=================Marked Attrs to file======================//
+Define in interpreter.cconf a list of hashmap variables, of which their
+delta changes get saved
+to a seperate file.
+
+Example:
+tid pid attr          new_val
+0, 1    feed_speed_2   1750
+645,1945, feed_speed_2 1850
+
+Perhaps check in set_var, if value has changed, if not, do nothing.
+If so invoke: save delta changes of marked attrs.
+
+Should_be_more_efficient:
+ //strcmp(varname,marked_attr[i]) -> faster if marked_attr[i] is sorted!
+if (varname is in marked_attr)
+	if(get_var_val(varname) != new_val)
+		write to file
+
+Interpreter_cconf:
+marked_attrs = {feed_speed_2, feed_speed_3};
+-> while parsing: marked_attrs_count=2
+   allocate marked_attr calloc(marked_attrs_count,char[32]);
+//=================
 Perhaps we should think a new version naming scheme into existance.
 Perhaps two chars indicating if it is a nc_interpreter, or 3D_vis release, or both.
 So f.e.: 0.4.1.2-v, 0.4.1.2-n, 0.3.9.2-nv
@@ -19,9 +44,38 @@ Only the executables need to be handpicked.
 
 //TODO set lerpFactor via plot.cconf
 
-Add button for current_TID control mode
-->live mode react to pipe values
-->manual mode ignore pipe values, control with LEFT RIGHT
+
+When shutting down Dashboard before 3D_vis, i.e. 3D_vis orphaned,
+the terminal process finishes.
+
+/*[INFO] track_list saved to
+/home/tilo/work/schmelz-ki/archive/res/metadata/20261123_200211_00_Test_316L_CuAl_laserleistung/
+track_list_enriched.csv
+
+tilo@tilo-Laptop:~/work/schmelz-ki/schmelzki/app$ [3D_Vis] Window closed. Shutting down background pipe reader...
+[3D_Vis] Exiting 3D_Visualizer...
+*/
+
+After closing 3D_Vis, the shutdown messages
+Stdout messages get dumped to the terminal
+
+/*tilo@tilo-Laptop:~/work/schmelz-ki/schmelzki/app$ [UI] Camera mode switched to: Freecam
+[UI] Camera mode switched to: Orbit
+[UI] Camera mode switched to: Freecam
+[UI] Camera mode switched to: Orbit
+[UI] Camera mode switched to: Freecam
+[UI] Camera mode switched to: Orbit
+[UI] Camera mode switched to: Freecam
+
+tilo@tilo-Laptop:~/work/schmelz-ki/schmelzki/app$ [UI] Camera mode switched to: Orbit
+[UI] Camera mode switched to: Freecam
+[UI] Camera mode switched to: Orbit
+*/
+
+Curiously the terminal does not complain, about unkown commands??
+Perhaps it recognizes that the text stems from stdout opposed to stdin!
+
+
 
 //----Not advisable
 Can we somehow embed the whole vis window into the dashboard?
